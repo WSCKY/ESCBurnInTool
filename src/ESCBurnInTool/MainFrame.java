@@ -2,6 +2,7 @@ package ESCBurnInTool;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -19,6 +20,8 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Dictionary;
+import java.util.Hashtable;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.prefs.Preferences;
@@ -27,13 +30,16 @@ import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComboBox;
+import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
+import javax.swing.JSlider;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -60,6 +66,8 @@ public class MainFrame extends JFrame{
 
 	Preferences pref = null;
 	private String _Interface = "Uart";
+	private String _BurnInDuty = "6";
+	private String _BurnInTime = "3";
 
 	private static ComPackage rxData = new ComPackage();
 	private static ComPackage txData = new ComPackage();
@@ -91,24 +99,41 @@ public class MainFrame extends JFrame{
 	private JButton MotorStartBtn = new JButton("启动");
 	private JButton StartBurnInBtn = new JButton("开始");
 	private JButton StopBurnInBtn = new JButton("停止");
+
+	private JDialog ParamSetDialog = new JDialog(this);
+	private JPanel SliderPanel = new JPanel();
+	private JSlider ValueSlider = new JSlider(1, 10);
+	private JPanel confirmBtnPanel = new JPanel();
+	private JButton ConfirmButton = new JButton("确认");
+	Dictionary<Integer, Component> labelTable = new Hashtable<Integer, Component>();
 	/* 菜单栏 */
 	JMenuBar MenuBar = new JMenuBar();
 	JMenu setMenu = new JMenu("设置(s)");
 	JMenu ItemInterface = new JMenu("接口(i)");
+	JMenu ItemParameter = new JMenu("参数(p)");
 	JCheckBoxMenuItem ItemUart = null;
 	JCheckBoxMenuItem ItemWifi = null;
+	JMenuItem ItemDuty = new JMenuItem("转速");
+	JMenuItem ItemTime = new JMenuItem("时间");
 	ButtonGroup Interface_bg = new ButtonGroup();
 
 	public MainFrame() {
 		pref = Preferences.userRoot().node(this.getClass().getName());
 		_Interface = pref.get("_burn_Interface", "");
 		if(_Interface.equals("")) _Interface = "Uart";
+		_BurnInDuty = pref.get("_burn_Duty", "");
+		if(_BurnInDuty.equals("")) _BurnInDuty = "6";
+		_BurnInTime = pref.get("_burn_Time", "");
+		if(_BurnInTime.equals("")) _BurnInTime = "3";
+		BurnInDuty = Integer.valueOf(_BurnInDuty) * 10;
+		BurnInTime = Integer.valueOf(_BurnInTime) * 60000;
 
 		ItemUart = new JCheckBoxMenuItem("串口", _Interface.equals("Uart"));
 		ItemWifi = new JCheckBoxMenuItem("Wifi", _Interface.equals("Wifi"));
 		ItemUart.addActionListener(ifl); ItemWifi.addActionListener(ifl);
+		ItemDuty.addActionListener(spl); ItemTime.addActionListener(spl);
 
-		setTitle("F1/2调速器老化工具  V1.0.0");
+		setTitle("F1/2调速器老化工具  V1.1.0");
 		setSize(600, 220);
 		setResizable(false);
 		addWindowListener(wl);
@@ -122,13 +147,42 @@ public class MainFrame extends JFrame{
 		setMenu.setFont(new Font("宋体", Font.PLAIN, 14));
 		ItemInterface.setMnemonic('i');
 		ItemInterface.setFont(new Font("宋体", Font.PLAIN, 14));
-		setMenu.add(ItemInterface);
+		ItemParameter.setMnemonic('p');
+		ItemParameter.setFont(new Font("宋体", Font.PLAIN, 14));
+		setMenu.add(ItemInterface); setMenu.add(ItemParameter);
 		ItemUart.setFont(new Font("宋体", Font.PLAIN, 14));
 		Interface_bg.add(ItemUart);
 		ItemInterface.add(ItemUart);
 		ItemWifi.setFont(new Font("宋体", Font.PLAIN, 14));
 		Interface_bg.add(ItemWifi);
 		ItemInterface.add(ItemWifi);
+		ItemParameter.add(ItemDuty);
+		ItemParameter.add(ItemTime);
+
+//		ValueSlider.setMajorTickSpacing(20);
+//		ValueSlider.setMinorTickSpacing(5);
+		ValueSlider.setPaintLabels(true);
+		labelTable.put(1, new JLabel("10%")); labelTable.put(2, new JLabel("20%")); labelTable.put(3, new JLabel("30%"));
+		labelTable.put(4, new JLabel("40%")); labelTable.put(5, new JLabel("50%")); labelTable.put(6, new JLabel("60%"));
+		labelTable.put(7, new JLabel("70%")); labelTable.put(8, new JLabel("80%")); labelTable.put(9, new JLabel("90%"));
+		labelTable.put(10, new JLabel("100%"));
+		ValueSlider.setLabelTable(labelTable);
+		ValueSlider.setPreferredSize(new Dimension(380, 100));
+		SliderPanel.add(ValueSlider);
+		ConfirmButton.setPreferredSize(new Dimension(200, 40));
+		ConfirmButton.setFont(new Font("宋体", Font.BOLD, 20));
+		ConfirmButton.addActionListener(cbl);
+		confirmBtnPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 5, 15));
+		confirmBtnPanel.add(ConfirmButton);
+		ParamSetDialog.setTitle("设置");
+		ParamSetDialog.setLayout(new GridLayout(2, 1, 0, 0));
+		ParamSetDialog.add(SliderPanel);
+		ParamSetDialog.add(confirmBtnPanel);
+//		ParamSetDialog.setResizable(false);
+		ParamSetDialog.setSize(400, 180);
+		ParamSetDialog.setLocationRelativeTo(null);
+		ParamSetDialog.setModal(true);
+		ParamSetDialog.getRootPane().setDefaultButton(ConfirmButton);
 
 		ComPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 5));
 		ComPanel.setBackground(new Color(233, 80, 80, 160));
@@ -431,15 +485,17 @@ public class MainFrame extends JFrame{
 	};
 
 	private byte ESCBurnExpSpeed = 0;
-	private static final long BurnInTime = 180000;
+	private static long BurnInTime = 180000;
+	private static int BurnInDuty = 60;
+	private static final int StartUpTime = 30;
 	private class ESCBurnInThread implements Runnable {
 		public void run() {
 			int TimeCnt = 0;
 			long TimeStart = 0;
 			while(ESCBurnInStartFlag) {
-				if(TimeCnt < 25) {
+				if(TimeCnt < StartUpTime) {
 					TimeCnt ++;
-					ESCBurnInBar.setValue(TimeCnt * 4);
+					ESCBurnInBar.setValue(TimeCnt * 100 / StartUpTime);
 					ESCBurnInBar.setString("提速中...");
 					TimeStart = System.currentTimeMillis();
 				} else if((System.currentTimeMillis() - TimeStart) <= BurnInTime) { //3min
@@ -451,7 +507,7 @@ public class MainFrame extends JFrame{
 				} else {
 					ESCBurnInStartFlag = false;
 				}
-				ESCBurnExpSpeed = (byte) (TimeCnt * 2);
+				ESCBurnExpSpeed = (byte) (TimeCnt * BurnInDuty / StartUpTime);
 				try {
 					TimeUnit.MILLISECONDS.sleep(100);//100ms loop.
 				} catch (InterruptedException e) {
@@ -462,9 +518,9 @@ public class MainFrame extends JFrame{
 			ESCBurnInBar.setValue(0);
 			while(TimeCnt > 0) {
 				TimeCnt --;
-				ESCBurnInBar.setValue(TimeCnt * 4);
+				ESCBurnInBar.setValue(TimeCnt * 100 / StartUpTime);
 				ESCBurnInBar.setString("降速中...");
-				ESCBurnExpSpeed = (byte) (TimeCnt * 2);
+				ESCBurnExpSpeed = (byte) (TimeCnt * BurnInDuty / StartUpTime);
 				try {
 					TimeUnit.MILLISECONDS.sleep(100);//100ms loop.
 				} catch (InterruptedException e) {
@@ -524,6 +580,54 @@ public class MainFrame extends JFrame{
 				srBaudSet.setEnabled(true);
 				((JButton)e.getSource()).setText("连接");
 				debug_info.setText("Uart port closed.");
+			}
+		}
+	};
+
+	private String SetParamItem = "duty";
+	private ActionListener cbl = new ActionListener() {
+		public void actionPerformed(ActionEvent e) {
+			int d = ValueSlider.getValue();
+			if(SetParamItem.equals("duty")) {
+				_BurnInDuty = String.valueOf(d);
+//				System.out.println(_BurnInDuty);
+//				System.out.println("转速 = " + d);
+				BurnInDuty = d * 10;
+			} else if(SetParamItem.equals("time")) {
+				_BurnInTime = String.valueOf(d);
+//				System.out.println(_BurnInTime);
+//				System.out.println("时间  = " + ValueSlider.getValue());
+				BurnInTime = d * 60000;
+			}
+			ParamSetDialog.setVisible(false);
+			pref.put("_burn_Duty", _BurnInDuty);
+			pref.put("_burn_Time", _BurnInTime);
+		}
+	};
+
+	private ActionListener spl = new ActionListener() {
+		public void actionPerformed(ActionEvent e) {
+			if(ESCBurnInRunningFlag == false) {
+				String name = ((JMenuItem)e.getSource()).getText();
+				ParamSetDialog.setTitle("设置" + name);
+				if(name.equals("转速")) {
+					labelTable.put(1, new JLabel("10%")); labelTable.put(2, new JLabel("20%")); labelTable.put(3, new JLabel("30%"));
+					labelTable.put(4, new JLabel("40%")); labelTable.put(5, new JLabel("50%")); labelTable.put(6, new JLabel("60%"));
+					labelTable.put(7, new JLabel("70%")); labelTable.put(8, new JLabel("80%")); labelTable.put(9, new JLabel("90%"));
+					labelTable.put(10, new JLabel("100%"));
+					ValueSlider.setValue(Integer.valueOf(_BurnInDuty));
+					SetParamItem = "duty";
+				} else if(name.equals("时间")) {
+					labelTable.put(1, new JLabel("1min")); labelTable.put(2, new JLabel("2min")); labelTable.put(3, new JLabel("3min"));
+					labelTable.put(4, new JLabel("4min")); labelTable.put(5, new JLabel("5min")); labelTable.put(6, new JLabel("6min"));
+					labelTable.put(7, new JLabel("7min")); labelTable.put(8, new JLabel("8min")); labelTable.put(9, new JLabel("9min"));
+					labelTable.put(10, new JLabel("10min"));
+					ValueSlider.setValue(Integer.valueOf(_BurnInTime));
+					SetParamItem = "time";
+				}
+				ValueSlider.setLabelTable(labelTable);
+				ValueSlider.validate();
+				ParamSetDialog.setVisible(true);
 			}
 		}
 	};
